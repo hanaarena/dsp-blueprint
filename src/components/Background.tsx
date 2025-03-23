@@ -1,6 +1,27 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import * as d3 from "d3";
 
+const styles: Record<string, React.CSSProperties> = {
+  "btn-reset": {
+    position: "fixed",
+    top: "10px",
+    right: "10px",
+    padding: "10px",
+    background: "white",
+    border: "1px solid black",
+    cursor: "pointer",
+  },
+  "btn-undo": {
+    position: "fixed",
+    top: "10px",
+    right: "76px",
+    padding: "10px",
+    background: "white",
+    border: "1px solid black",
+    cursor: "pointer",
+  },
+};
+
 interface IBackgroundProps {
   svgRef: React.RefObject<SVGSVGElement | null>;
 }
@@ -26,6 +47,15 @@ export default function Background({ svgRef }: IBackgroundProps) {
     },
     [svgRef]
   );
+
+  const initViewport = useCallback(() => {
+    const svg = d3.select(svgRef.current);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    svg.attr("width", width).attr("height", height);
+
+    return svg;
+  }, []);
 
   const drawGrid = useCallback(() => {
     const svg = d3.select(svgRef.current);
@@ -66,17 +96,12 @@ export default function Background({ svgRef }: IBackgroundProps) {
       .attr("x2", x2)
       .attr("y1", (d: number) => d)
       .attr("y2", (d: number) => d);
-    console.warn("kekek 22", 22);
   }, [cellSize, svgRef]);
 
   useEffect(() => {
     if (!svgRef.current) return;
 
-    const svg = d3.select(svgRef.current);
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    svg.attr("width", width).attr("height", height);
-
+    const svg = initViewport();
     if (!zoomGroupRef.current) {
       // init zoom function
       const zoomGroup = svg.append("g");
@@ -92,7 +117,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
         drawGrid();
       });
 
-    svg.call(zoom);
+    zoom(svg as d3.Selection<SVGSVGElement, unknown, null, any>);
     svg.on("click", (event: MouseEvent) => {
       const [mouseX, mouseY] = d3.pointer(event);
       const snappedPoint = snapToGrid(mouseX, mouseY);
@@ -102,16 +127,13 @@ export default function Background({ svgRef }: IBackgroundProps) {
         setIsDrawing(true);
       } else {
         const endPoint = snapToGrid(mouseX, mouseY);
-        console.warn("kekek 1", 1);
-        setTimeout(() => {
-          d3.select(zoomGroupRef.current)
-            .append("line")
-            .attr("class", "line")
-            .attr("x1", startPoint.x)
-            .attr("y1", startPoint.y)
-            .attr("x2", endPoint.x)
-            .attr("y2", endPoint.y);
-        }, 0);
+        d3.select(zoomGroupRef.current)
+          .append("line")
+          .attr("class", "line")
+          .attr("x1", startPoint.x)
+          .attr("y1", startPoint.y)
+          .attr("x2", endPoint.x)
+          .attr("y2", endPoint.y);
 
         setStartPoint({ x: 0, y: 0 });
         setIsDrawing(false);
@@ -150,5 +172,49 @@ export default function Background({ svgRef }: IBackgroundProps) {
     };
   }, [drawGrid, svgRef, snapToGrid, startPoint, isDrawing]);
 
-  return <></>;
+  useEffect(() => {
+    window.onresize = () => {
+      const svg = d3.select(svgRef.current);
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      svg.attr("width", width).attr("height", height);
+      drawGrid();
+    };
+
+    return () => {
+      window.onresize = null;
+    };
+  }, []);
+
+  const reset = () => {
+    if (svgRef.current) {
+      d3.select(zoomGroupRef.current).selectAll(".line").remove();
+    }
+  };
+
+  const undo = () => {
+    if (svgRef.current) {
+      const childrens = d3
+        .select(zoomGroupRef.current)
+        .selectAll(".line")
+        .nodes();
+      const lastChild = childrens[childrens.length - 1];
+      if (lastChild) {
+        d3.select(lastChild).remove();
+      }
+    }
+  };
+
+  return (
+    <>
+      <div className="actions">
+        <button onClick={reset} style={styles["btn-reset"]}>
+          Reset
+        </button>
+        <button onClick={undo} style={styles["btn-undo"]}>
+          Undo
+        </button>
+      </div>
+    </>
+  );
 }
