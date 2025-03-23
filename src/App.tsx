@@ -8,8 +8,8 @@ function App() {
 
   return (
     <>
-      <svg id="board" ref={svgRef}></svg>
-      <Background svgref={svgRef} />
+      <svg id="editor" ref={svgRef}></svg>
+      <Background svgRef={svgRef} />
     </>
   );
 }
