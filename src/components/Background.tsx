@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import * as d3 from "d3";
+import { detectIntersection } from "@/utils/line";
 
 const styles: Record<string, React.CSSProperties> = {
   "btn-reset": {
@@ -29,11 +30,9 @@ interface IBackgroundProps {
 export default function Background({ svgRef }: IBackgroundProps) {
   const zoomGroupRef = useRef<SVGGElement>(null);
   const draftLineRef = useRef<SVGGElement>(null);
-  const [startPoint, setStartPoint] = useState<{ x: number; y: number }>({
-    x: 0,
-    y: 0,
-  });
+  const [startPoint, setStartPoint] = useState<Point>({ x: 0, y: 0 });
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
+  const [lines, setLines] = useState<Line[]>([]);
   const cellSize = 20;
 
   const snapToGrid = useCallback(
@@ -98,12 +97,36 @@ export default function Background({ svgRef }: IBackgroundProps) {
       .attr("y2", (d: number) => d);
   }, [cellSize, svgRef]);
 
+  const checkIntersections = useCallback(() => {
+    const intersectionPoints: Point[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const intersection = detectIntersection(lines[i], lines[j]);
+        if (intersection) {
+          intersectionPoints.push(intersection);
+        }
+      }
+    }
+
+    d3.select(zoomGroupRef.current).selectAll(".intersection-circle").remove();
+    d3.select(zoomGroupRef.current)
+      .selectAll(".intersection-circle")
+      .data(intersectionPoints)
+      .enter()
+      .append("circle")
+      .attr("class", "intersection-circle")
+      .attr("cx", (d: Point) => d.x)
+      .attr("cy", (d: Point) => d.y)
+      .attr("r", 3)
+      .attr("fill", "currentColor");
+  }, [lines]);
+
   useEffect(() => {
     if (!svgRef.current) return;
 
     const svg = initViewport();
+    // avoid re-render `g`
     if (!zoomGroupRef.current) {
-      // init zoom function
       const zoomGroup = svg.append("g");
       zoomGroupRef.current = zoomGroup.node();
     }
@@ -127,15 +150,23 @@ export default function Background({ svgRef }: IBackgroundProps) {
         setIsDrawing(true);
       } else {
         const endPoint = snapToGrid(mouseX, mouseY);
+        const newLine: Line = {
+          x1: startPoint.x,
+          y1: startPoint.y,
+          x2: endPoint.x,
+          y2: endPoint.y,
+        };
+
         d3.select(zoomGroupRef.current)
           .append("line")
           .attr("class", "line")
-          .attr("marker-end", "url(#arrow)") // Add arrow marker to the end
+          .attr("marker-end", "url(#arrow)")
           .attr("x1", startPoint.x)
           .attr("y1", startPoint.y)
           .attr("x2", endPoint.x)
           .attr("y2", endPoint.y);
 
+        setLines((prevLines) => [...prevLines, newLine]);
         setStartPoint({ x: 0, y: 0 });
         setIsDrawing(false);
         // remove draft dashed line
@@ -187,21 +218,26 @@ export default function Background({ svgRef }: IBackgroundProps) {
     };
   }, [svgRef, drawGrid]);
 
+  useEffect(() => {
+    checkIntersections();
+  }, [lines, checkIntersections]);
+
   const reset = () => {
     if (svgRef.current) {
-      d3.select(zoomGroupRef.current).selectAll(".line").remove();
+      const zoomG = d3.select(zoomGroupRef.current);
+      zoomG.selectAll(".line").remove();
+      zoomG.selectAll(".intersection-circle").remove();
+      setLines([]);
     }
   };
 
   const undo = () => {
     if (svgRef.current) {
-      const childrens = d3
-        .select(zoomGroupRef.current)
-        .selectAll(".line")
-        .nodes();
-      const lastChild = childrens[childrens.length - 1];
-      if (lastChild) {
-        d3.select(lastChild).remove();
+      const gLines = d3.select(zoomGroupRef.current).selectAll(".line").nodes();
+      const lastLine = gLines[gLines.length - 1];
+      if (lastLine) {
+        d3.select(lastLine).remove();
+        setLines((prevLines) => prevLines.slice(0, -1));
       }
     }
   };
