@@ -55,7 +55,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
     svg.attr("width", width).attr("height", height);
 
     return svg;
-  }, []);
+  }, [svgRef]);
 
   const drawGrid = useCallback(() => {
     const svg = d3.select(svgRef.current);
@@ -130,6 +130,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
         d3.select(zoomGroupRef.current)
           .append("line")
           .attr("class", "line")
+          .attr("marker-end", "url(#arrow)") // Add arrow marker to the end
           .attr("x1", startPoint.x)
           .attr("y1", startPoint.y)
           .attr("x2", endPoint.x)
@@ -170,7 +171,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
       svg.on("click", null);
       svg.on("mousemove", null);
     };
-  }, [drawGrid, svgRef, snapToGrid, startPoint, isDrawing]);
+  }, [drawGrid, svgRef, snapToGrid, startPoint, isDrawing, initViewport]);
 
   useEffect(() => {
     window.onresize = () => {
@@ -184,7 +185,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
     return () => {
       window.onresize = null;
     };
-  }, []);
+  }, [svgRef, drawGrid]);
 
   const reset = () => {
     if (svgRef.current) {

@@ -8,7 +8,21 @@ function App() {
 
   return (
     <>
-      <svg id="editor" ref={svgRef}></svg>
+      <svg id="editor" ref={svgRef}>
+        <defs>
+          <marker
+            id="arrow"
+            viewBox="0 -5 10 10"
+            refX="10"
+            refY="0"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto"
+          >
+            <path d="M0,-5L10,0L0,5" fill="black" />
+          </marker>
+        </defs>
+      </svg>
       <Background svgRef={svgRef} />
     </>
   );
