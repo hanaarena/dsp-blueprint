@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import * as d3 from "d3";
 import { detectIntersection } from "@/utils/line";
+import BuildingModal from "@/components/BuildingModal";
 
 const styles: Record<string, React.CSSProperties> = {
   "btn-reset": {
@@ -21,6 +22,15 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid black",
     cursor: "pointer",
   },
+  "btn-add-building": {
+    position: "fixed",
+    top: "10px",
+    right: "142px",
+    padding: "10px",
+    background: "white",
+    border: "1px solid black",
+    cursor: "pointer",
+  },
 };
 
 interface IBackgroundProps {
@@ -29,11 +39,17 @@ interface IBackgroundProps {
 
 export default function Background({ svgRef }: IBackgroundProps) {
   const zoomGroupRef = useRef<SVGGElement>(null);
+  const gridGroupRef = useRef<SVGGElement>(null);
+  const buildingGroupRef = useRef<SVGGElement>(null);
   const draftLineRef = useRef<SVGGElement>(null);
   const [startPoint, setStartPoint] = useState<Point>({ x: 0, y: 0 });
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
   const [lines, setLines] = useState<Line[]>([]);
   const cellSize = 20;
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [isPlacingBuilding, setIsPlacingBuilding] = useState<boolean>(false);
+  const buildingImageRef = useRef<HTMLImageElement>(null);
 
   const snapToGrid = useCallback(
     (x: number, y: number) => {
@@ -60,9 +76,8 @@ export default function Background({ svgRef }: IBackgroundProps) {
     const svg = d3.select(svgRef.current);
     const width = Number(svg.attr("width"));
     const height = Number(svg.attr("height"));
-
-    const zoomGroup = d3.select(zoomGroupRef.current);
-    zoomGroup.selectAll(".grid-line").remove();
+    const gridGroup = d3.select(gridGroupRef.current);
+    gridGroup.selectAll(".grid-line").remove();
 
     const transform = d3.zoomTransform(svgRef.current as SVGSVGElement);
     const x1 = transform.invertX(0);
@@ -74,7 +89,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
     const startY = Math.floor(y1 / cellSize) * cellSize;
     const endY = Math.ceil(y2 / cellSize) * cellSize;
 
-    zoomGroup
+    gridGroup
       .selectAll(".axis-y")
       .data(d3.range(startX, endX, cellSize))
       .enter()
@@ -85,7 +100,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
       .attr("y1", y1)
       .attr("y2", y2);
 
-    zoomGroup
+    gridGroup
       .selectAll(".axis-x")
       .data(d3.range(startY, endY, cellSize))
       .enter()
@@ -121,6 +136,20 @@ export default function Background({ svgRef }: IBackgroundProps) {
       .attr("fill", "currentColor");
   }, [lines]);
 
+  const handleBuildingSelect = (imageUrl: string) => {
+    setSelectedImageUrl(imageUrl);
+    setIsPlacingBuilding(true);
+  };
+
+  const handleCancelBuildingPlacement = () => {
+    setSelectedImageUrl(null);
+    setIsPlacingBuilding(false);
+    if (buildingImageRef.current) {
+      d3.select(buildingImageRef.current).remove();
+      buildingImageRef.current = null;
+    }
+  };
+
   useEffect(() => {
     if (!svgRef.current) return;
 
@@ -129,7 +158,14 @@ export default function Background({ svgRef }: IBackgroundProps) {
     if (!zoomGroupRef.current) {
       const zoomGroup = svg.append("g");
       zoomGroupRef.current = zoomGroup.node();
+
+      // grid line group & building group
+      const gridGroup = zoomGroup.append("g");
+      gridGroupRef.current = gridGroup.node();
+      const buildingGroup = zoomGroup.append("g");
+      buildingGroupRef.current = buildingGroup.node();
     }
+
     drawGrid();
 
     const zoom = d3
@@ -145,6 +181,18 @@ export default function Background({ svgRef }: IBackgroundProps) {
       const [mouseX, mouseY] = d3.pointer(event);
       const snappedPoint = snapToGrid(mouseX, mouseY);
 
+      if (isPlacingBuilding && selectedImageUrl) {
+        d3.select(buildingGroupRef.current)
+          .append("image")
+          .attr("href", selectedImageUrl)
+          .attr("x", snappedPoint.x - cellSize / 2)
+          .attr("y", snappedPoint.y - cellSize / 2)
+          .attr("width", cellSize * 2)
+          .attr("height", cellSize * 2);
+        handleCancelBuildingPlacement();
+        return;
+      }
+
       if (!startPoint.x && !startPoint.y) {
         setStartPoint(snappedPoint);
         setIsDrawing(true);
@@ -157,6 +205,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
           y2: endPoint.y,
         };
 
+        // draw line & arrow
         d3.select(zoomGroupRef.current)
           .append("line")
           .attr("class", "line")
@@ -178,6 +227,28 @@ export default function Background({ svgRef }: IBackgroundProps) {
     });
 
     svg.on("mousemove", (event: MouseEvent) => {
+      if (isPlacingBuilding && selectedImageUrl) {
+        const [mouseX, mouseY] = d3.pointer(event);
+        const snappedPoint = snapToGrid(mouseX, mouseY);
+
+        if (!buildingImageRef.current) {
+          const image = d3
+            .select(buildingGroupRef.current)
+            .append("image")
+            .attr("href", selectedImageUrl)
+            .attr("width", cellSize * 2)
+            .attr("height", cellSize * 2)
+            .style("pointer-events", "none");
+          buildingImageRef.current =
+            image.node() as unknown as HTMLImageElement;
+        }
+
+        d3.select(buildingImageRef.current)
+          .attr("x", snappedPoint.x - cellSize / 2)
+          .attr("y", snappedPoint.y - cellSize / 2);
+        return;
+      }
+
       if (!isDrawing) return;
 
       const [mouseX, mouseY] = d3.pointer(event);
@@ -202,7 +273,16 @@ export default function Background({ svgRef }: IBackgroundProps) {
       svg.on("click", null);
       svg.on("mousemove", null);
     };
-  }, [drawGrid, svgRef, snapToGrid, startPoint, isDrawing, initViewport]);
+  }, [
+    drawGrid,
+    svgRef,
+    snapToGrid,
+    startPoint,
+    isDrawing,
+    initViewport,
+    isPlacingBuilding,
+    selectedImageUrl,
+  ]);
 
   useEffect(() => {
     window.onresize = () => {
@@ -213,8 +293,16 @@ export default function Background({ svgRef }: IBackgroundProps) {
       drawGrid();
     };
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleCancelBuildingPlacement();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
       window.onresize = null;
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [svgRef, drawGrid]);
 
@@ -227,6 +315,7 @@ export default function Background({ svgRef }: IBackgroundProps) {
       const zoomG = d3.select(zoomGroupRef.current);
       zoomG.selectAll(".line").remove();
       zoomG.selectAll(".intersection-circle").remove();
+      d3.select(buildingGroupRef.current).selectAll("image").remove();
       setLines([]);
     }
   };
@@ -251,7 +340,18 @@ export default function Background({ svgRef }: IBackgroundProps) {
         <button onClick={undo} style={styles["btn-undo"]}>
           Undo
         </button>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          style={styles["btn-add-building"]}
+        >
+          Add Building
+        </button>
       </div>
+      <BuildingModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onBuildingSelect={handleBuildingSelect}
+      />
     </>
   );
 }
